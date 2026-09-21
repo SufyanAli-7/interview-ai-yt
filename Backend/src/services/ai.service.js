@@ -1,73 +1,172 @@
 const { GoogleGenAI } = require("@google/genai")
 const { z } = require("zod")
-const { zodToJsonSchema } = require("zod-to-json-schema")
 const puppeteer = require("puppeteer")
 
-const ai = new GoogleGenAI({
-    apiKey: process.env.GOOGLE_GENAI_API_KEY
-})
+const apiKey = process.env.GOOGLE_GENAI_API_KEY
+const baseUrl = process.env.BASE_URL
 
+const ai = new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+        baseUrl: baseUrl
+    }
+})
 
 const interviewReportSchema = z.object({
-    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job describe"),
+    matchScore: z.number(),
     technicalQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
-        answer: z.string().describe("How to answer this question, what points to cover, what approach to take etc.")
-    })).describe("Technical questions that can be asked in the interview along with their intention and how to answer them"),
+        question: z.string(),
+        intention: z.string(),
+        answer: z.string()
+    })),
     behavioralQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
-        answer: z.string().describe("How to answer this question, what points to cover, what approach to take etc.")
-    })).describe("Behavioral questions that can be asked in the interview along with their intention and how to answer them"),
+        question: z.string(),
+        intention: z.string(),
+        answer: z.string()
+    })),
     skillGaps: z.array(z.object({
-        skill: z.string().describe("The skill which the candidate is lacking"),
-        severity: z.enum([ "low", "medium", "high" ]).describe("The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances")
-    })).describe("List of skill gaps in the candidate's profile along with their severity"),
+        skill: z.string(),
+        severity: z.enum([ "low", "medium", "high" ])
+    })),
     preparationPlan: z.array(z.object({
-        day: z.number().describe("The day number in the preparation plan, starting from 1"),
-        focus: z.string().describe("The main focus of this day in the preparation plan, e.g. data structures, system design, mock interviews etc."),
-        tasks: z.array(z.string()).describe("List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.")
-    })).describe("A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively"),
-    title: z.string().describe("The title of the job for which the interview report is generated"),
+        day: z.number(),
+        focus: z.string(),
+        tasks: z.array(z.string())
+    })),
+    title: z.string()
 })
+
+const resumePdfSchema = z.object({
+    html: z.string()
+})
+
+function extractJson(text) {
+    let clean = (text || "").trim()
+
+    if (clean.startsWith("```json")) {
+        clean = clean.slice(7)
+    } else if (clean.startsWith("```")) {
+        clean = clean.slice(3)
+    }
+
+    if (clean.endsWith("```")) {
+        clean = clean.slice(0, -3)
+    }
+
+    clean = clean.trim()
+
+    try {
+        return JSON.parse(clean)
+    } catch (err) {
+        const firstBrace = clean.indexOf("{")
+        const lastBrace = clean.lastIndexOf("}")
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            return JSON.parse(clean.substring(firstBrace, lastBrace + 1))
+        }
+        throw err
+    }
+}
 
 async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
 
+    const prompt = `
+Generate an interview report.
 
-    const prompt = `Generate an interview report for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
+Resume:
+${resume || "Not provided"}
+
+Self Description:
+${selfDescription || "Not provided"}
+
+Job Description:
+${jobDescription || "Not provided"}
+
+Return ONLY valid JSON.
+No Markdown.
+No code fences.
+No explanation.
+
+Use exactly this structure:
+
+{
+  "matchScore": 0,
+  "technicalQuestions": [
+    {
+      "question": "string",
+      "intention": "string",
+      "answer": "string"
+    }
+  ],
+  "behavioralQuestions": [
+    {
+      "question": "string",
+      "intention": "string",
+      "answer": "string"
+    }
+  ],
+  "skillGaps": [
+    {
+      "skill": "string",
+      "severity": "low"
+    }
+  ],
+  "preparationPlan": [
+    {
+      "day": 1,
+      "focus": "string",
+      "tasks": ["string"]
+    }
+  ],
+  "title": "string"
+}
+
+matchScore must be between 0 and 100.
+severity must be low, medium, or high.
+technicalQuestions: MUST provide at least 5 technical questions.
+behavioralQuestions: MUST provide at least 5 behavioral questions.
+skillGaps: MUST provide at least 5 skill gaps.
+preparationPlan: MUST provide at least 7 days in the preparation roadmap (day 1 through at least day 7).
 `
 
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(interviewReportSchema),
-        }
+        model: "gemini-3.7-flash",
+        contents: prompt
     })
 
-    return JSON.parse(response.text)
+    const json = extractJson(response.text)
+    const result = interviewReportSchema.parse(json)
 
-
+    return result
 }
 
+function sanitizeHtmlLinks(html) {
+    if (!html) return html
 
+    // Fix markdown links inside href: href="[https://url](https://url)" -> href="https://url"
+    let cleaned = html.replace(/href=["']\[([^\]]+)\]\(([^)]+)\)["']/gi, (match, p1, p2) => {
+        return `href="${p2 || p1}"`
+    })
+
+    // Fix any raw markdown links inside HTML text: [Text](https://url) -> <a href="https://url" target="_blank">Text</a>
+    cleaned = cleaned.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gi, '<a href="$2" target="_blank" style="color: #0284c7; text-decoration: underline; cursor: pointer;">$1</a>')
+
+    return cleaned
+}
 
 async function generatePdfFromHtml(htmlContent) {
+    const cleanedHtml = sanitizeHtmlLinks(htmlContent)
     const browser = await puppeteer.launch()
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+    const page = await browser.newPage()
+    await page.setContent(cleanedHtml, { waitUntil: "networkidle0" })
 
     const pdfBuffer = await page.pdf({
-        format: "A4", margin: {
+        format: "A4",
+        printBackground: true,
+        margin: {
             top: "20mm",
-            bottom: "20mm",
-            left: "15mm",
-            right: "15mm"
+            // bottom: "20mm",
+            // left: "15mm",
+            // right: "15mm"
         }
     })
 
@@ -78,39 +177,53 @@ async function generatePdfFromHtml(htmlContent) {
 
 async function generateResumePdf({ resume, selfDescription, jobDescription }) {
 
-    const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer")
-    })
+    const prompt = `
+Generate a tailored resume HTML for a candidate with the following details:
 
-    const prompt = `Generate resume for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
+Resume:
+${resume || "Not provided"}
 
-                        the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
-                        The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
-                        The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
-                        you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
-                        The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
-                        The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.
-                    `
+Self Description:
+${selfDescription || "Not provided"}
+
+Job Description:
+${jobDescription || "Not provided"}
+
+The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured with CSS styling inside a <style> tag, making it easy to read, professional, and ATS-friendly.
+
+CRITICAL HYPERLINK RULES:
+1. ALL links (Projects, GitHub, LinkedIn, Portfolio, Email, Phone) MUST be standard HTML anchor tags: <a href="..." target="_blank">...</a>.
+2. NEVER put markdown syntax like [url](url) inside href attributes or inside HTML. The href value must be a pure, clean URL string (e.g. href="https://github.com/username").
+3. For email: <a href="mailto:email@example.com">email@example.com</a>
+4. For phone: <a href="tel:+1234567890">+1234567890</a>
+5. For profiles: <a href="https://linkedin.com/in/username" target="_blank">LinkedIn</a>, <a href="https://github.com/username" target="_blank">GitHub</a>, <a href="https://portfolio.com" target="_blank">Portfolio</a>
+6. For projects: Make project titles clickable (<a href="https://..." target="_blank">Project Name</a>) OR provide clickable links like <a href="https://..." target="_blank">Live Demo</a> | <a href="https://..." target="_blank">GitHub Repo</a>.
+7. Do NOT output raw plain text URLs without wrapping them in an <a href="..."> tag.
+8. In the CSS <style> tag, ensure links have clear clickable styling:
+   a { color: #0284c7; text-decoration: underline; cursor: pointer; }
+   a:hover { color: #0369a1; }
+
+Do NOT use canvas, tools, or artifacts.
+Return ONLY valid JSON.
+No Markdown fences, no explanation.
+
+Use exactly this structure:
+{
+  "html": "<!DOCTYPE html><html><head><style>...</style></head><body>...</body></html>"
+}
+`
 
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(resumePdfSchema),
-        }
+        model: "gemini-3.7-flash",
+        contents: prompt
     })
 
+    const jsonContent = extractJson(response.text)
+    const validated = resumePdfSchema.parse(jsonContent)
 
-    const jsonContent = JSON.parse(response.text)
-
-    const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
+    const pdfBuffer = await generatePdfFromHtml(validated.html)
 
     return pdfBuffer
-
 }
 
 module.exports = { generateInterviewReport, generateResumePdf }
