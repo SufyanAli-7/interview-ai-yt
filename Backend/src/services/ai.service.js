@@ -2,8 +2,8 @@ const { GoogleGenAI } = require("@google/genai")
 const { z } = require("zod")
 const puppeteer = require("puppeteer")
 
-const apiKey = process.env.GOOGLE_GENAI_API_KEY
-const baseUrl = process.env.BASE_URL
+const apiKey = process.env.GOOGLE_GENAI_API_KEY || "sk-gemini"
+const baseUrl = process.env.BASE_URL || "https://gemini-web2api-production-7299.up.railway.app"
 
 const ai = new GoogleGenAI({
     apiKey: apiKey,
