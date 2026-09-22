@@ -57,3 +57,12 @@ export const generateResumePdf = async ({ interviewReportId }) => {
 
     return response.data
 }
+
+/**
+ * @description Service to regenerate interview report for an existing interviewId.
+ */
+export const reGenerateInterviewReport = async ({ interviewId }) => {
+    const response = await api.post(`/api/interview/regenerate/${interviewId}`)
+
+    return response.data
+}
