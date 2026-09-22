@@ -267,14 +267,39 @@ $font-stack:     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Robot
     cursor: pointer;
     transition: border-color 0.2s, background-color 0.2s;
 
-    &:hover {
+    &:hover,
+    &--dragging {
         border-color: $accent;
         background-color: rgba($accent, 0.05);
+    }
+
+    &--selected {
+        border-style: solid;
+        border-color: rgba(#3fb950, 0.45);
+        background-color: rgba(#3fb950, 0.05);
+
+        &:hover {
+            border-color: #3fb950;
+            background-color: rgba(#3fb950, 0.08);
+        }
+    }
+
+    &__selected-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        width: 100%;
+        text-align: center;
     }
 
     &__icon {
         color: $accent;
         margin-bottom: 0.25rem;
+
+        &--success {
+            color: #3fb950;
+        }
     }
 
     &__title {
@@ -284,10 +309,42 @@ $font-stack:     system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Robot
         margin: 0;
     }
 
+    &__filename {
+        font-size: 0.925rem;
+        font-weight: 600;
+        color: $text-primary;
+        margin: 0;
+        max-width: 90%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        word-break: break-all;
+    }
+
     &__subtitle {
         font-size: 0.75rem;
         color: $text-muted;
         margin: 0;
+    }
+
+    &__remove-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin-top: 0.5rem;
+        padding: 0.25rem 0.65rem;
+        font-size: 0.75rem;
+        color: #ff6b9d;
+        background-color: rgba(#ff2d78, 0.1);
+        border: 1px solid rgba(#ff2d78, 0.25);
+        border-radius: 0.35rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+
+        &:hover {
+            background-color: rgba(#ff2d78, 0.2);
+            color: #ff2d78;
+        }
     }
 }
 
