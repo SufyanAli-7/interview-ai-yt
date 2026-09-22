@@ -22,6 +22,20 @@ app.use(cors({
     credentials: true
 }))
 
+const connectToDB = require("./config/database")
+
+// Ensure MongoDB is connected before handling API requests
+app.use(async (req, res, next) => {
+    try {
+        await connectToDB()
+        next()
+    } catch (err) {
+        return res.status(500).json({
+            message: err.message || "Database connection error."
+        })
+    }
+})
+
 /* require all the routes here */
 const authRouter = require("./routes/auth.routes")
 const interviewRouter = require("./routes/interview.routes")
@@ -31,6 +45,12 @@ const interviewRouter = require("./routes/interview.routes")
 app.use("/api/auth", authRouter)
 app.use("/api/interview", interviewRouter)
 
-
+// Global error handling middleware
+app.use((err, req, res, next) => {
+    console.error("Global Server Error:", err)
+    res.status(err.status || 500).json({
+        message: err.message || "Internal Server Error"
+    })
+})
 
 module.exports = app
