@@ -19,16 +19,19 @@
       "dest": "Backend/server.js"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "Frontend/dist/assets/$1"
+      "handle": "filesystem"
     },
     {
-      "src": "/(.*\\.(?:ico|png|jpg|jpeg|svg|css|js|json|webp|woff|woff2|ttf))",
-      "dest": "Frontend/dist/$1"
+      "src": "/assets/(.*)",
+      "dest": "/Frontend/assets/$1"
+    },
+    {
+      "src": "/(.*\\.(?:ico|png|jpg|jpeg|svg|css|js|json|webp|woff|woff2|ttf|map))",
+      "dest": "/Frontend/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "Frontend/dist/index.html"
+      "dest": "/Frontend/index.html"
     }
   ]
 }
